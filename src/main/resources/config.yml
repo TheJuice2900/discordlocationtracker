@@ -1,0 +1,50 @@
+# Discord Location Plugin Configuration
+
+# Discord Webhook URL (Required)
+# Get this from your Discord server: Server Settings > Integrations > Webhooks > New Webhook
+# Click "Copy Webhook URL" and paste it below
+webhook-url: "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"
+
+# Webhook Display Name (Optional)
+# This will override the default webhook name in Discord
+# Leave empty to use the webhook's default name
+webhook-name: "Minecraft Location Bot"
+
+# Webhook Avatar URL (Optional)
+# Direct URL to an image that will be used as the webhook's avatar
+# Leave empty to use the webhook's default avatar
+# Example: "https://i.imgur.com/yourimage.png"
+webhook-avatar-url: ""
+
+# Embed Customization
+embed:
+  # Embed Color (HEX format)
+  # Use any hex color code with or without the # symbol
+  # Examples:
+  #   Red: #FF0000
+  #   Green: #00FF00
+  #   Blue: #0000FF
+  #   Purple: #9B59B6
+  #   Orange: #FF8C00
+  #   Yellow: #FFFF00
+  #   Pink: #FF69B4
+  #   Cyan: #00FFFF
+  #   Default (Blue): #58A5F0
+  # You can use any color picker tool to get hex codes!
+  color: "#58A5F0"
+
+  # Embed Title
+  # The main title of the embed message
+  title: "📍 Player Location"
+
+  # Embed Footer (Optional)
+  # Small text at the bottom of the embed
+  # Leave empty to disable
+  footer: ""
+
+  # Embed Thumbnail (Optional)
+  # Small image in the top-right corner of the embed
+  # Must be a direct URL to an image
+  # Leave empty to disable
+  # Example: "https://i.imgur.com/yourimage.png"
+  thumbnail: ""

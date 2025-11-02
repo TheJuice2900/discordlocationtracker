@@ -1,0 +1,28 @@
+name: DiscordLocationPlugin
+version: 2
+main: com.example.discordlocation.DiscordLocationPlugin
+api-version: 1.21
+author: YourName
+description: Send player coordinates and biome to Discord webhook
+
+commands:
+  sendlocation:
+    description: Send your current location and biome to Discord
+    usage: /sendlocation [note]
+    aliases: [loc, location, log]
+    permission: discordlocation.send
+    permission-message: §cYou don't have permission to use this command!
+  discordlocationreload:
+    description: Reload the plugin configuration
+    usage: /discordlocationreload
+    aliases: [dlreload, locreload]
+    permission: discordlocation.reload
+    permission-message: §cYou don't have permission to use this command!
+
+permissions:
+  discordlocation.send:
+    description: Allows players to send their location to Discord
+    default: op
+  discordlocation.reload:
+    description: Allows reloading the plugin configuration
+    default: op
