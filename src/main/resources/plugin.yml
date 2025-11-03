@@ -3,7 +3,7 @@ version: 2
 main: com.example.discordlocation.DiscordLocationPlugin
 api-version: 1.21
 author: YourName
-description: Send player coordinates and biome to Discord webhook
+description: Send player coordinates and biome to Discord webhook with database storage
 
 commands:
   sendlocation:
@@ -12,6 +12,21 @@ commands:
     aliases: [loc, location, log]
     permission: discordlocation.send
     permission-message: §cYou don't have permission to use this command!
+
+  listlocations:
+    description: List all your saved locations
+    usage: /listlocations
+    aliases: [locs, locations, mylocations]
+    permission: discordlocation.list
+    permission-message: §cYou don't have permission to use this command!
+
+  deletelocation:
+    description: Delete a saved location by ID
+    usage: /deletelocation <id>
+    aliases: [delloc, removeloc]
+    permission: discordlocation.delete
+    permission-message: §cYou don't have permission to use this command!
+
   discordlocationreload:
     description: Reload the plugin configuration
     usage: /discordlocationreload
@@ -19,10 +34,35 @@ commands:
     permission: discordlocation.reload
     permission-message: §cYou don't have permission to use this command!
 
+  confirmsend:
+    description: Confirm sending location to Discord
+    usage: /confirmsend
+
+  cancelsend:
+    description: Cancel sending location to Discord
+    usage: /cancelsend
+
 permissions:
+  discordlocation.*:
+    description: Gives access to all DiscordLocation commands
+    children:
+      discordlocation.send: true
+      discordlocation.list: true
+      discordlocation.delete: true
+      discordlocation.reload: true
+
   discordlocation.send:
     description: Allows players to send their location to Discord
     default: op
+
+  discordlocation.list:
+    description: Allows players to list their saved locations
+    default: op
+
+  discordlocation.delete:
+    description: Allows players to delete their saved locations
+    default: op
+
   discordlocation.reload:
     description: Allows reloading the plugin configuration
     default: op
