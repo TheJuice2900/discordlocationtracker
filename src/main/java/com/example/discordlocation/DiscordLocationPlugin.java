@@ -175,7 +175,7 @@ public class DiscordLocationPlugin extends JavaPlugin {
                         TextComponent coords = new TextComponent("  §7World: §f" + loc.world + " §7| §f" + loc.x + ", " + loc.y + ", " + loc.z);
                         player.spigot().sendMessage(coords);
 
-                        TextComponent info = new TextComponent("  §7Biome: §f" + loc.biome + " §7| §8" + date);
+                        TextComponent info = new TextComponent("  §7Biome: §f" + formatBiomeName(loc.biome) + " §7| §8" + date);
                         player.spigot().sendMessage(info);
 
                         // Add delete button
@@ -298,7 +298,7 @@ public class DiscordLocationPlugin extends JavaPlugin {
                             pendingLocations.put(playerId, new PendingLocation(
                                     player.getName(), world, x, y, z, biome, finalNote
                             ));
-                            sendInteractivePrompt(player, world, x, y, z, finalNote);
+                            sendInteractivePrompt(player, world, x, y, z, biome, finalNote);
                         } else {
                             player.sendMessage("§7(Discord integration disabled - no webhook configured)");
                         }
@@ -372,19 +372,22 @@ public class DiscordLocationPlugin extends JavaPlugin {
         return false;
     }
 
-    private void sendInteractivePrompt(Player player, String world, int x, int y, int z, String note) {
+    private void sendInteractivePrompt(Player player, String world, int x, int y, int z, String biome, String note) {
         // Create the main message
-        TextComponent message = new TextComponent("§7Send this location to Discord?");
-        player.spigot().sendMessage(message);
+        player.sendMessage("§b§l━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        player.sendMessage("§b§l  Confirm Location");
+        player.sendMessage("§b§l━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-        TextComponent locationInfo = new TextComponent("§7Location: §f" + world + " §7(§f" + x + "§7, §f" + y + "§7, §f" + z + "§7)");
-        player.spigot().sendMessage(locationInfo);
+        player.spigot().sendMessage(new TextComponent("  §7World: §f" + world));
+        player.spigot().sendMessage(new TextComponent("  §7Coords: §f" + x + ", " + y + ", " + z));
+        player.spigot().sendMessage(new TextComponent("  §7Biome: §f" + formatBiomeName(biome)));
 
         // If there's a note, display it
         if (note != null && !note.isEmpty()) {
-            TextComponent noteMsg = new TextComponent("§7Note: §f" + note);
-            player.spigot().sendMessage(noteMsg);
+            player.spigot().sendMessage(new TextComponent("  §7Note: §f" + note));
         }
+
+        player.sendMessage(""); // Empty line for spacing
 
         // Create clickable button
         TextComponent button = new TextComponent("§b§l[✓ Send to Discord]");
@@ -408,6 +411,7 @@ public class DiscordLocationPlugin extends JavaPlugin {
         combined.addExtra(cancel);
 
         player.spigot().sendMessage(combined);
+        player.sendMessage("§b§l━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     }
 
     private void sendToDiscord(String playerName, String world, int x, int y, int z, String biome, String note) throws Exception {
@@ -443,7 +447,7 @@ public class DiscordLocationPlugin extends JavaPlugin {
         jsonBuilder.append("{\"name\": \"Player\", \"value\": \"").append(escapeJson(playerName)).append("\", \"inline\": true},");
         jsonBuilder.append("{\"name\": \"World\", \"value\": \"").append(escapeJson(world)).append("\", \"inline\": true},");
         jsonBuilder.append("{\"name\": \"Coordinates\", \"value\": \"X: ").append(x).append("\\nY: ").append(y).append("\\nZ: ").append(z).append("\", \"inline\": false},");
-        jsonBuilder.append("{\"name\": \"Biome\", \"value\": \"").append(escapeJson(biome)).append("\", \"inline\": false}");
+        jsonBuilder.append("{\"name\": \"Biome\", \"value\": \"").append(escapeJson(formatBiomeName(biome))).append("\", \"inline\": false}");
 
         // Add note field if provided
         if (note != null && !note.isEmpty()) {
@@ -490,6 +494,18 @@ public class DiscordLocationPlugin extends JavaPlugin {
             getLogger().warning("Invalid hex color format: " + hex + ". Using default color.");
             return 5814783; // Default blue
         }
+    }
+
+    private String formatBiomeName(String biome) {
+        // Replace underscores with spaces and capitalize each word
+        String[] words = biome.toLowerCase().replace("_", " ").split(" ");
+        StringBuilder formattedBiome = new StringBuilder();
+        for (String word : words) {
+            if (!word.isEmpty()) {
+                formattedBiome.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1)).append(" ");
+            }
+        }
+        return formattedBiome.toString().trim();
     }
 
     public static DiscordLocationPlugin getInstance(){

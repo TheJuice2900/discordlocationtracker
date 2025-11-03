@@ -3,7 +3,7 @@ version: 2
 main: com.example.discordlocation.DiscordLocationPlugin
 api-version: 1.21
 author: Juice, Rahul
-description: Send player coordinates and biome to Discord webhook with database storage
+description: Saves player information and saves you the trouble of copy pasting! Has Discord functionality built in.
 
 commands:
   sendlocation:
@@ -27,7 +27,7 @@ commands:
     permission: discordlocation.delete
     permission-message: §cYou don't have permission to use this command!
 
-  discordlocationreload:
+  trackerreload:
     description: Reload the plugin configuration
     usage: /discordlocationreload
     aliases: [dlreload, locreload]
