@@ -20,6 +20,8 @@ public class DiscordLocationPlugin extends JavaPlugin {
     private String embedTitle;
     private String embedFooter;
     private String embedThumbnail;
+    public static DiscordLocationPlugin instance;
+
 
     @Override
     public void onEnable() {
@@ -183,4 +185,8 @@ public class DiscordLocationPlugin extends JavaPlugin {
             return 5814783; // Default blue ishh? ig
         }
     }
+    public static DiscordLocationPlugin getInstance(){
+        return instance;
+    }
+
 }
