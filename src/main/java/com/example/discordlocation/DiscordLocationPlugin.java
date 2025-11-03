@@ -29,10 +29,11 @@ public class DiscordLocationPlugin extends JavaPlugin {
     private String embedTitle;
     private String embedFooter;
     private String embedThumbnail;
+    private boolean webhookConfigured;
     public static DiscordLocationPlugin instance;
     private Locations locationsDB;
 
-    // Store pending location data
+    // Store pending location data for Discord confirmation
     private Map<UUID, PendingLocation> pendingLocations = new HashMap<>();
 
     // Inner class to store location data
@@ -74,8 +75,8 @@ public class DiscordLocationPlugin extends JavaPlugin {
         // Initialize database
         locationsDB = new Locations(this);
 
-        if (webhookUrl.isEmpty()) {
-            getLogger().warning("No webhook URL configured! Please set it in config.yml");
+        if (!webhookConfigured) {
+            getLogger().warning("No webhook URL configured! Discord integration disabled. Locations will still be saved to database.");
         }
 
         // Start cleanup task for expired pending locations (after 5 minutes)
@@ -103,6 +104,11 @@ public class DiscordLocationPlugin extends JavaPlugin {
         webhookName = getConfig().getString("webhook-name", "Minecraft Location Bot");
         webhookAvatarUrl = getConfig().getString("webhook-avatar-url", "");
 
+        // Check if webhook is properly configured (not empty and not the default placeholder)
+        webhookConfigured = !webhookUrl.isEmpty() &&
+                !webhookUrl.contains("YOUR_WEBHOOK_ID") &&
+                !webhookUrl.contains("YOUR_WEBHOOK_TOKEN");
+
         // Load embed customization
         String embedColorHex = getConfig().getString("embed.color", "#58A5F0");
         embedColor = hexToDecimal(embedColorHex);
@@ -123,6 +129,9 @@ public class DiscordLocationPlugin extends JavaPlugin {
             reloadConfig();
             loadConfig();
             sender.sendMessage("§aDiscordLocationPlugin configuration reloaded!");
+            if (!webhookConfigured) {
+                sender.sendMessage("§eWarning: Webhook not configured. Discord integration is disabled.");
+            }
             return true;
         }
 
@@ -247,11 +256,6 @@ public class DiscordLocationPlugin extends JavaPlugin {
                 return true;
             }
 
-            if (webhookUrl.isEmpty()) {
-                player.sendMessage("§cWebhook URL is not configured!");
-                return true;
-            }
-
             // Get player location and biome
             Location loc = player.getLocation();
             String biome = loc.getBlock().getBiome().toString();
@@ -268,14 +272,41 @@ public class DiscordLocationPlugin extends JavaPlugin {
                 note = String.join(" ", args);
             }
 
-            // Store the location data
-            UUID playerId = player.getUniqueId();
-            pendingLocations.put(playerId, new PendingLocation(
-                    player.getName(), world, x, y, z, biome, note
-            ));
+            // Use note as name, or generate default name
+            String locationName = (note != null && !note.isEmpty())
+                    ? note
+                    : "Location at " + x + ", " + y + ", " + z;
 
-            // Send interactive message to player
-            sendInteractivePrompt(player, world, x, y, z, note);
+            // Save to database immediately (async)
+            String finalNote = note;
+            getServer().getScheduler().runTaskAsynchronously(this, () -> {
+                boolean savedToDB = locationsDB.saveLocation(
+                        player.getName(),
+                        locationName,
+                        x, y, z,
+                        world,
+                        biome
+                );
+
+                getServer().getScheduler().runTask(this, () -> {
+                    if (savedToDB) {
+                        player.sendMessage("§a✓ Location saved to database!");
+
+                        // If webhook is configured, offer to send to Discord
+                        if (webhookConfigured) {
+                            UUID playerId = player.getUniqueId();
+                            pendingLocations.put(playerId, new PendingLocation(
+                                    player.getName(), world, x, y, z, biome, finalNote
+                            ));
+                            sendInteractivePrompt(player, world, x, y, z, finalNote);
+                        } else {
+                            player.sendMessage("§7(Discord integration disabled - no webhook configured)");
+                        }
+                    } else {
+                        player.sendMessage("§c✗ Failed to save location to database!");
+                    }
+                });
+            });
 
             return true;
         } else if (command.getName().equalsIgnoreCase("confirmsend")) {
@@ -287,6 +318,12 @@ public class DiscordLocationPlugin extends JavaPlugin {
             Player player = (Player) sender;
             UUID playerId = player.getUniqueId();
 
+            // Check if webhook is configured
+            if (!webhookConfigured) {
+                player.sendMessage("§cDiscord integration is disabled - no webhook configured!");
+                return true;
+            }
+
             // Check if there's a pending location
             if (!pendingLocations.containsKey(playerId)) {
                 player.sendMessage("§cNo pending location to send! Use /sendlocation first.");
@@ -296,32 +333,12 @@ public class DiscordLocationPlugin extends JavaPlugin {
             // Get the stored location data
             PendingLocation loc = pendingLocations.get(playerId);
 
-            // Save to database first
+            // Send to Discord
             getServer().getScheduler().runTaskAsynchronously(this, () -> {
-                // Use note as name, or generate default name
-                String locationName = (loc.note != null && !loc.note.isEmpty())
-                        ? loc.note
-                        : "Location at " + loc.x + ", " + loc.y + ", " + loc.z;
-
-                boolean savedToDB = locationsDB.saveLocation(
-                        loc.playerName,
-                        locationName,
-                        loc.x, loc.y, loc.z,
-                        loc.world,
-                        loc.biome
-                );
-
-                if (!savedToDB) {
-                    getServer().getScheduler().runTask(this, () ->
-                            player.sendMessage("§cWarning: Failed to save location to database!")
-                    );
-                }
-
-                // Send to Discord
                 try {
                     sendToDiscord(loc.playerName, loc.world, loc.x, loc.y, loc.z, loc.biome, loc.note);
                     getServer().getScheduler().runTask(this, () -> {
-                        player.sendMessage("§a✓ Location sent to Discord" + (savedToDB ? " and saved to database!" : "!"));
+                        player.sendMessage("§a✓ Location sent to Discord!");
                         pendingLocations.remove(playerId);
                     });
                 } catch (Exception e) {
@@ -357,8 +374,11 @@ public class DiscordLocationPlugin extends JavaPlugin {
 
     private void sendInteractivePrompt(Player player, String world, int x, int y, int z, String note) {
         // Create the main message
-        TextComponent message = new TextComponent("§7Your location: §f" + world + " §7(§f" + x + "§7, §f" + y + "§7, §f" + z + "§7)");
+        TextComponent message = new TextComponent("§7Send this location to Discord?");
         player.spigot().sendMessage(message);
+
+        TextComponent locationInfo = new TextComponent("§7Location: §f" + world + " §7(§f" + x + "§7, §f" + y + "§7, §f" + z + "§7)");
+        player.spigot().sendMessage(locationInfo);
 
         // If there's a note, display it
         if (note != null && !note.isEmpty()) {
@@ -371,7 +391,7 @@ public class DiscordLocationPlugin extends JavaPlugin {
         button.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/confirmsend"));
         button.setHoverEvent(new HoverEvent(
                 HoverEvent.Action.SHOW_TEXT,
-                new ComponentBuilder("§aClick to send your location to Discord and save to database").create()
+                new ComponentBuilder("§aClick to send your location to Discord").create()
         ));
 
         // Create cancel option

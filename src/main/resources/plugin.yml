@@ -1,8 +1,8 @@
-name: DiscordLocationPlugin
+name: Tracker_v2
 version: 2
 main: com.example.discordlocation.DiscordLocationPlugin
 api-version: 1.21
-author: YourName
+author: Juice, Rahul
 description: Send player coordinates and biome to Discord webhook with database storage
 
 commands:
