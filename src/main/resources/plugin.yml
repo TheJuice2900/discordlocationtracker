@@ -63,6 +63,11 @@ commands:
     description: Cancel sending location to Discord
     usage: /cancelsend
 
+  sendtodiscord:
+    description: Send a saved location to Discord
+    usage: /sendtodiscord <id>
+    permission: discordlocation.send
+
 permissions:
   discordlocation.*:
     description: Gives access to all DiscordLocation commands

@@ -221,14 +221,38 @@ public class DiscordLocationPlugin extends JavaPlugin {
                         TextComponent info = new TextComponent("  §7Biome: " + getBiomeColor(loc.biome) + formatBiomeName(loc.biome) + " §7| §8" + date);
                         player.spigot().sendMessage(info);
 
+                        TextComponent actions = new TextComponent("  ");
+
                         // Add delete button
-                        TextComponent deleteBtn = new TextComponent("  §c§l[Delete]");
+                        TextComponent deleteBtn = new TextComponent("§c§l[Delete]");
                         deleteBtn.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/deletelocation " + loc.id));
                         deleteBtn.setHoverEvent(new HoverEvent(
                                 HoverEvent.Action.SHOW_TEXT,
                                 new ComponentBuilder("§cClick to delete this location").create()
                         ));
-                        player.spigot().sendMessage(deleteBtn);
+                        actions.addExtra(deleteBtn);
+
+                        // Add share button
+                        TextComponent shareBtn = new TextComponent(" §a§l[Share]");
+                        shareBtn.setClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/sharelocation " + loc.id + " "));
+                        shareBtn.setHoverEvent(new HoverEvent(
+                                HoverEvent.Action.SHOW_TEXT,
+                                new ComponentBuilder("§aClick to share this location").create()
+                        ));
+                        actions.addExtra(shareBtn);
+
+                        // Add send to discord button
+                        if (webhookConfigured) {
+                            TextComponent discordBtn = new TextComponent(" §9§l[Send to Discord]");
+                            discordBtn.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/sendtodiscord " + loc.id));
+                            discordBtn.setHoverEvent(new HoverEvent(
+                                    HoverEvent.Action.SHOW_TEXT,
+                                    new ComponentBuilder("§9Click to send this location to Discord").create()
+                            ));
+                            actions.addExtra(discordBtn);
+                        }
+
+                        player.spigot().sendMessage(actions);
 
                         player.sendMessage(""); // Empty line for spacing
                     }
@@ -625,6 +649,62 @@ public class DiscordLocationPlugin extends JavaPlugin {
             } else {
                 player.sendMessage("§cNo pending location to cancel.");
             }
+
+            return true;
+        }
+        // Handle sendtodiscord command
+        if (command.getName().equalsIgnoreCase("sendtodiscord")) {
+            if (!(sender instanceof Player)) {
+                sender.sendMessage("§cOnly players can use this command!");
+                return true;
+            }
+
+            Player player = (Player) sender;
+
+            if (!player.hasPermission("discordlocation.send")) {
+                player.sendMessage("§cYou don't have permission to use this command!");
+                return true;
+            }
+
+            if (!webhookConfigured) {
+                player.sendMessage("§cDiscord integration is disabled - no webhook configured!");
+                return true;
+            }
+
+            if (args.length < 1) {
+                player.sendMessage("§cUsage: /sendtodiscord <id>");
+                return true;
+            }
+
+            int locationId;
+            try {
+                locationId = Integer.parseInt(args[0]);
+            } catch (NumberFormatException e) {
+                player.sendMessage("§cInvalid location ID!");
+                return true;
+            }
+
+            getServer().getScheduler().runTaskAsynchronously(this, () -> {
+                Locations.LocStamp loc = locationsDB.getLocation(String.valueOf(locationId), player.getName());
+
+                if (loc == null) {
+                    player.sendMessage("§cLocation not found.");
+                    return;
+                }
+
+                try {
+                    sendToDiscord(loc.username, loc.world, loc.x, loc.y, loc.z, loc.biome, loc.name);
+                    getServer().getScheduler().runTask(this, () -> {
+                        player.sendMessage("§a✔ Location sent to Discord!");
+                    });
+                } catch (Exception e) {
+                    getLogger().severe("Failed to send webhook: " + e.getMessage());
+                    e.printStackTrace();
+                    getServer().getScheduler().runTask(this, () ->
+                            player.sendMessage("§c✗ Failed to send location to Discord!")
+                    );
+                }
+            });
 
             return true;
         }

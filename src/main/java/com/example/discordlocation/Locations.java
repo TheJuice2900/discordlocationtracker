@@ -49,7 +49,7 @@ public class Locations {
 
     private void createTable() {
         String sql = "CREATE TABLE IF NOT EXISTS locations (" +
-                "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                "id INTEGER NOT NULL," +
                 "x INTEGER NOT NULL," +
                 "y INTEGER NOT NULL," +
                 "z INTEGER NOT NULL," +
@@ -57,7 +57,8 @@ public class Locations {
                 "name TEXT NOT NULL," +
                 "world TEXT NOT NULL," +
                 "biome TEXT NOT NULL," +
-                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
+                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+                "PRIMARY KEY (id, username)" +
                 ");";
         SqliteDB.createNewTable(sql);
     }
@@ -66,16 +67,17 @@ public class Locations {
      * Save a location to the database
      */
     public boolean saveLocation(String username, String name, int x, int y, int z, String world, String biome) {
-        String sql = "INSERT INTO locations(username, name, x, y, z, world, biome) VALUES(?,?,?,?,?,?,?)";
+        String sql = "INSERT INTO locations(id, username, name, x, y, z, world, biome) VALUES(?,?,?,?,?,?,?,?)";
 
         try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, username);
-            pstmt.setString(2, name);
-            pstmt.setInt(3, x);
-            pstmt.setInt(4, y);
-            pstmt.setInt(5, z);
-            pstmt.setString(6, world);
-            pstmt.setString(7, biome);
+            pstmt.setInt(1, getNextId(username));
+            pstmt.setString(2, username);
+            pstmt.setString(3, name);
+            pstmt.setInt(4, x);
+            pstmt.setInt(5, y);
+            pstmt.setInt(6, z);
+            pstmt.setString(7, world);
+            pstmt.setString(8, biome);
             pstmt.executeUpdate();
             return true;
         } catch (SQLException e) {
@@ -83,6 +85,21 @@ public class Locations {
             e.printStackTrace();
             return false;
         }
+    }
+
+    private int getNextId(String username) {
+        String sql = "SELECT MAX(id) FROM locations WHERE username = ?";
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, username);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return rs.getInt(1) + 1;
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Error getting next id: " + e.getMessage());
+            e.printStackTrace();
+        }
+        return 1;
     }
 
     /**
@@ -127,11 +144,49 @@ public class Locations {
             pstmt.setInt(1, id);
             pstmt.setString(2, username);
             int rowsAffected = pstmt.executeUpdate();
-            return rowsAffected > 0;
+            if (rowsAffected > 0) {
+                rearrangeIds(username);
+                return true;
+            }
+            return false;
         } catch (SQLException e) {
             plugin.getLogger().severe("Error deleting location: " + e.getMessage());
             e.printStackTrace();
             return false;
+        }
+    }
+
+    private void rearrangeIds(String username) {
+        List<LocStamp> locations = getLocationsByUsername(username);
+        String sql = "UPDATE locations SET id = ? WHERE id = ? AND username = ?";
+        try {
+            conn.setAutoCommit(false);
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                for (int i = 0; i < locations.size(); i++) {
+                    if (locations.get(i).id != i + 1) {
+                        pstmt.setInt(1, i + 1);
+                        pstmt.setInt(2, locations.get(i).id);
+                        pstmt.setString(3, username);
+                        pstmt.addBatch();
+                    }
+                }
+                pstmt.executeBatch();
+                conn.commit();
+            } catch (SQLException e) {
+                conn.rollback();
+                plugin.getLogger().severe("Error rearranging ids: " + e.getMessage());
+                e.printStackTrace();
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Error starting transaction: " + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            try {
+                conn.setAutoCommit(true);
+            } catch (SQLException e) {
+                plugin.getLogger().severe("Error setting auto-commit: " + e.getMessage());
+                e.printStackTrace();
+            }
         }
     }
 
