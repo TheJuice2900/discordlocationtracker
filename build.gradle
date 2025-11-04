@@ -27,7 +27,7 @@ tasks.withType(JavaCompile) {
 }
 
 shadowJar {
-    archiveFileName = "discordhook.jar"
+    archiveFileName = "Tracker_3.1.0.jar"
 }
 
 // ✅ Fix Shadow / Gradle permission error

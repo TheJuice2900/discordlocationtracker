@@ -90,7 +90,7 @@ public class Locations {
      */
     public List<LocStamp> getLocationsByUsername(String username) {
         List<LocStamp> locations = new ArrayList<>();
-        String sql = "SELECT * FROM locations WHERE username = ? ORDER BY created_at DESC";
+        String sql = "SELECT * FROM locations WHERE username = ? ORDER BY id ASC";
 
         try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, username);
@@ -136,13 +136,32 @@ public class Locations {
     }
 
     /**
-     * Get a specific location by ID and username
+     * Get a specific location by ID or name and username
      */
-    public LocStamp getLocation(int id, String username) {
-        String sql = "SELECT * FROM locations WHERE id = ? AND username = ?";
+    public LocStamp getLocation(String identifier, String username) {
+        String sql;
+        boolean isId = false;
+        int locationId = -1;
+
+        try {
+            locationId = Integer.parseInt(identifier);
+            isId = true;
+        } catch (NumberFormatException e) {
+            // Identifier is a name
+        }
+
+        if (isId) {
+            sql = "SELECT * FROM locations WHERE id = ? AND username = ?";
+        } else {
+            sql = "SELECT * FROM locations WHERE name = ? AND username = ?";
+        }
 
         try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setInt(1, id);
+            if (isId) {
+                pstmt.setInt(1, locationId);
+            } else {
+                pstmt.setString(1, identifier);
+            }
             pstmt.setString(2, username);
             ResultSet rs = pstmt.executeQuery();
 
@@ -165,6 +184,44 @@ public class Locations {
         }
 
         return null;
+    }
+
+    /**
+     * Rename a location by ID or name
+     */
+    public boolean renameLocation(String username, String identifier, String newName) {
+        String sql;
+        boolean isId = false;
+        int locationId = -1;
+
+        try {
+            locationId = Integer.parseInt(identifier);
+            isId = true;
+        } catch (NumberFormatException e) {
+            // Identifier is a name
+        }
+
+        if (isId) {
+            sql = "UPDATE locations SET name = ? WHERE id = ? AND username = ?";
+        } else {
+            sql = "UPDATE locations SET name = ? WHERE name = ? AND username = ?";
+        }
+
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, newName);
+            if (isId) {
+                pstmt.setInt(2, locationId);
+            } else {
+                pstmt.setString(2, identifier);
+            }
+            pstmt.setString(3, username);
+            int rowsAffected = pstmt.executeUpdate();
+            return rowsAffected > 0;
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Error renaming location: " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
     }
 
     /**

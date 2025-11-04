@@ -35,6 +35,25 @@ public class DiscordLocationPlugin extends JavaPlugin {
 
     // Store pending location data for Discord confirmation
     private Map<UUID, PendingLocation> pendingLocations = new HashMap<>();
+    private Map<UUID, Integer> playerPages = new HashMap<>();
+
+    // Store pending share data
+    private Map<UUID, PendingShare> pendingShares = new HashMap<>();
+
+    // Inner class to store share data
+    private class PendingShare {
+        String senderName;
+        String recipientName;
+        Locations.LocStamp location;
+        long timestamp;
+
+        PendingShare(String senderName, String recipientName, Locations.LocStamp location) {
+            this.senderName = senderName;
+            this.recipientName = recipientName;
+            this.location = location;
+            this.timestamp = System.currentTimeMillis();
+        }
+    }
 
     // Inner class to store location data
     private class PendingLocation {
@@ -84,6 +103,8 @@ public class DiscordLocationPlugin extends JavaPlugin {
             long currentTime = System.currentTimeMillis();
             pendingLocations.entrySet().removeIf(entry ->
                     currentTime - entry.getValue().timestamp > 300000); // 5 minutes
+            pendingShares.entrySet().removeIf(entry ->
+                    currentTime - entry.getValue().timestamp > 120000); // 2 minutes
         }, 6000L, 6000L); // Run every 5 minutes
 
         getLogger().info("DiscordLocationPlugin has been enabled!");
@@ -149,7 +170,17 @@ public class DiscordLocationPlugin extends JavaPlugin {
                 return true;
             }
 
-            // Run database query async
+            int page = 1;
+            if (args.length > 0) {
+                try {
+                    page = Integer.parseInt(args[0]);
+                } catch (NumberFormatException e) {
+                    player.sendMessage("§cInvalid page number!");
+                    return true;
+                }
+            }
+
+            int finalPage = page;
             getServer().getScheduler().runTaskAsynchronously(this, () -> {
                 List<Locations.LocStamp> locations = locationsDB.getLocationsByUsername(player.getName());
 
@@ -159,23 +190,35 @@ public class DiscordLocationPlugin extends JavaPlugin {
                         return;
                     }
 
+                    int locationsPerPage = 3;
+                    int totalPages = (int) Math.ceil((double) locations.size() / locationsPerPage);
+
+                    if (finalPage < 1 || finalPage > totalPages) {
+                        player.sendMessage("§cInvalid page number!");
+                        return;
+                    }
+
                     player.sendMessage("§b§l━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                    player.sendMessage("§b§l  Your Saved Locations");
+                    player.sendMessage("§b§l  Your Saved Locations (Page " + finalPage + "/" + totalPages + ")");
                     player.sendMessage("§b§l━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
                     SimpleDateFormat dateFormat = new SimpleDateFormat("MMM dd, yyyy HH:mm");
 
-                    for (Locations.LocStamp loc : locations) {
+                    int startIndex = (finalPage - 1) * locationsPerPage;
+                    int endIndex = Math.min(startIndex + locationsPerPage, locations.size());
+
+                    for (int i = startIndex; i < endIndex; i++) {
+                        Locations.LocStamp loc = locations.get(i);
                         String date = dateFormat.format(loc.created_at);
 
                         // Create clickable location entry
-                        TextComponent entry = new TextComponent("§7[§a#" + loc.id + "§7] §f" + loc.name);
+                        TextComponent entry = new TextComponent("§7[§a#" + loc.id + "§7] §b§l" + loc.name);
                         player.spigot().sendMessage(entry);
 
-                        TextComponent coords = new TextComponent("  §7World: §f" + loc.world + " §7| §f" + loc.x + ", " + loc.y + ", " + loc.z);
+                        TextComponent coords = new TextComponent("  §7World: §f" + formatWorldName(loc.world) + " §7| §f" + loc.x + ", " + loc.y + ", " + loc.z);
                         player.spigot().sendMessage(coords);
 
-                        TextComponent info = new TextComponent("  §7Biome: §f" + formatBiomeName(loc.biome) + " §7| §8" + date);
+                        TextComponent info = new TextComponent("  §7Biome: " + getBiomeColor(loc.biome) + formatBiomeName(loc.biome) + " §7| §8" + date);
                         player.spigot().sendMessage(info);
 
                         // Add delete button
@@ -188,6 +231,29 @@ public class DiscordLocationPlugin extends JavaPlugin {
                         player.spigot().sendMessage(deleteBtn);
 
                         player.sendMessage(""); // Empty line for spacing
+                    }
+
+                    // Pagination controls
+                    TextComponent pagination = new TextComponent();
+                    if (finalPage > 1) {
+                        TextComponent prev = new TextComponent("§d§l[Previous]");
+                        prev.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/listlocations " + (finalPage - 1)));
+                        prev.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("§dGo to previous page").create()));
+                        pagination.addExtra(prev);
+                    }
+
+                    if (finalPage < totalPages) {
+                        if (finalPage > 1) {
+                            pagination.addExtra(" "); // Add a space between buttons
+                        }
+                        TextComponent next = new TextComponent("§d§l[Next]");
+                        next.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/listlocations " + (finalPage + 1)));
+                        next.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("§dGo to next page").create()));
+                        pagination.addExtra(next);
+                    }
+
+                    if (pagination.getExtra() != null && !pagination.getExtra().isEmpty()) {
+                        player.spigot().sendMessage(pagination);
                     }
 
                     player.sendMessage("§b§l━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -231,12 +297,205 @@ public class DiscordLocationPlugin extends JavaPlugin {
 
                 getServer().getScheduler().runTask(this, () -> {
                     if (success) {
-                        player.sendMessage("§a✓ Location #" + locationId + " deleted successfully!");
+                        player.sendMessage("§a✔ Location #" + locationId + " deleted successfully!");
                     } else {
                         player.sendMessage("§c✗ Failed to delete location. Make sure the ID is correct.");
                     }
                 });
             });
+
+            return true;
+        }
+
+        // Handle renamelocation command
+        if (command.getName().equalsIgnoreCase("renamelocation")) {
+            if (!(sender instanceof Player)) {
+                sender.sendMessage("§cOnly players can use this command!");
+                return true;
+            }
+
+            Player player = (Player) sender;
+
+            if (!player.hasPermission("discordlocation.rename")) {
+                player.sendMessage("§cYou don't have permission to use this command!");
+                return true;
+            }
+
+            if (args.length < 2) {
+                player.sendMessage("§cUsage: /renamelocation <id/name> <newname>");
+                return true;
+            }
+
+            String identifier = args[0];
+            String newName = String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length));
+
+            getServer().getScheduler().runTaskAsynchronously(this, () -> {
+                boolean success = locationsDB.renameLocation(player.getName(), identifier, newName);
+
+                getServer().getScheduler().runTask(this, () -> {
+                    if (success) {
+                        player.sendMessage("§a✔ Location renamed to '" + newName + "' successfully!");
+                    } else {
+                        player.sendMessage("§c✗ Failed to rename location. Make sure the ID or name is correct.");
+                    }
+                });
+            });
+
+            return true;
+        }
+
+        // Handle sharelocation command
+        if (command.getName().equalsIgnoreCase("sharelocation")) {
+            if (!(sender instanceof Player)) {
+                sender.sendMessage("§cOnly players can use this command!");
+                return true;
+            }
+
+            Player player = (Player) sender;
+
+            if (!player.hasPermission("discordlocation.share")) {
+                player.sendMessage("§cYou don't have permission to use this command!");
+                return true;
+            }
+
+            if (args.length < 2) {
+                player.sendMessage("§cUsage: /sharelocation <id/name> <player>");
+                return true;
+            }
+
+            String identifier = args[0];
+            Player recipient = getServer().getPlayer(args[1]);
+
+            if (recipient == null || !recipient.isOnline()) {
+                player.sendMessage("§cPlayer not found or is not online.");
+                return true;
+            }
+
+            if (recipient.equals(player)) {
+                player.sendMessage("§cYou cannot share a location with yourself.");
+                return true;
+            }
+
+            getServer().getScheduler().runTaskAsynchronously(this, () -> {
+                Locations.LocStamp loc = locationsDB.getLocation(identifier, player.getName());
+
+                getServer().getScheduler().runTask(this, () -> {
+                    if (loc == null) {
+                        player.sendMessage("§cLocation not found.");
+                        return;
+                    }
+
+                    // Create and store pending share
+                    PendingShare share = new PendingShare(player.getName(), recipient.getName(), loc);
+                    pendingShares.put(recipient.getUniqueId(), share);
+
+                    // Send confirmation to sender
+                    player.sendMessage("§aLocation share request sent to " + recipient.getName() + ".");
+
+                    // Send request to recipient
+                    recipient.sendMessage("§b§l━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                    recipient.sendMessage("§b§l  Location Share Request");
+                    recipient.sendMessage("§b§l━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                    recipient.sendMessage("§f" + player.getName() + " wants to share a location with you:");
+                    recipient.sendMessage("  §7Name: §f" + loc.name);
+                    recipient.sendMessage("  §7World: §f" + formatWorldName(loc.world));
+                    recipient.sendMessage("  §7Coords: §f" + loc.x + ", " + loc.y + ", " + loc.z);
+                    recipient.sendMessage("");
+
+                    TextComponent accept = new TextComponent("§a§l[Accept]");
+                    accept.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/acceptshare " + player.getName()));
+                    accept.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("§aAccept this location").create()));
+
+                    TextComponent decline = new TextComponent(" §c§l[Decline]");
+                    decline.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/declineshare " + player.getName()));
+                    decline.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("§cDecline this location").create()));
+
+                    TextComponent combined = new TextComponent();
+                    combined.addExtra(accept);
+                    combined.addExtra(decline);
+
+                    recipient.spigot().sendMessage(combined);
+                    recipient.sendMessage("§b§l━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                });
+            });
+
+            return true;
+        }
+
+        // Handle acceptshare command
+        if (command.getName().equalsIgnoreCase("acceptshare")) {
+            if (!(sender instanceof Player)) {
+                sender.sendMessage("§cOnly players can use this command!");
+                return true;
+            }
+
+            Player player = (Player) sender;
+            UUID recipientId = player.getUniqueId();
+
+            if (args.length < 1) {
+                player.sendMessage("§cUsage: /acceptshare <sender>");
+                return true;
+            }
+
+            String senderName = args[0];
+
+            if (!pendingShares.containsKey(recipientId) || !pendingShares.get(recipientId).senderName.equalsIgnoreCase(senderName)) {
+                player.sendMessage("§cNo pending share request from that player.");
+                return true;
+            }
+
+            PendingShare share = pendingShares.get(recipientId);
+            Locations.LocStamp loc = share.location;
+
+            getServer().getScheduler().runTaskAsynchronously(this, () -> {
+                boolean saved = locationsDB.saveLocation(player.getName(), loc.name, loc.x, loc.y, loc.z, loc.world, loc.biome);
+
+                getServer().getScheduler().runTask(this, () -> {
+                    if (saved) {
+                        player.sendMessage("§aLocation '" + loc.name + "' saved to your list!");
+                        Player senderPlayer = getServer().getPlayer(senderName);
+                        if (senderPlayer != null && senderPlayer.isOnline()) {
+                            senderPlayer.sendMessage("§a" + player.getName() + " accepted your location share.");
+                        }
+                    } else {
+                        player.sendMessage("§cFailed to save location.");
+                    }
+                    pendingShares.remove(recipientId);
+                });
+            });
+
+            return true;
+        }
+
+        // Handle declineshare command
+        if (command.getName().equalsIgnoreCase("declineshare")) {
+            if (!(sender instanceof Player)) {
+                sender.sendMessage("§cOnly players can use this command!");
+                return true;
+            }
+
+            Player player = (Player) sender;
+            UUID recipientId = player.getUniqueId();
+
+            if (args.length < 1) {
+                player.sendMessage("§cUsage: /declineshare <sender>");
+                return true;
+            }
+
+            String senderName = args[0];
+
+            if (!pendingShares.containsKey(recipientId) || !pendingShares.get(recipientId).senderName.equalsIgnoreCase(senderName)) {
+                player.sendMessage("§cNo pending share request from that player.");
+                return true;
+            }
+
+            pendingShares.remove(recipientId);
+            player.sendMessage("§cYou have declined the location share.");
+
+            Player senderPlayer = getServer().getPlayer(senderName);
+            if (senderPlayer != null && senderPlayer.isOnline()) {
+                senderPlayer.sendMessage("§c" + player.getName() + " declined your location share.");
+            }
 
             return true;
         }
@@ -264,7 +523,7 @@ public class DiscordLocationPlugin extends JavaPlugin {
             int x = loc.getBlockX();
             int y = loc.getBlockY();
             int z = loc.getBlockZ();
-            String world = loc.getWorld().getName();
+            String world = formatWorldName(loc.getWorld().getName());
 
             // Get optional note from args
             String note = null;
@@ -290,7 +549,7 @@ public class DiscordLocationPlugin extends JavaPlugin {
 
                 getServer().getScheduler().runTask(this, () -> {
                     if (savedToDB) {
-                        player.sendMessage("§a✓ Location saved to database!");
+                        player.sendMessage("§aYour location has been saved!");
 
                         // If webhook is configured, offer to send to Discord
                         if (webhookConfigured) {
@@ -338,7 +597,7 @@ public class DiscordLocationPlugin extends JavaPlugin {
                 try {
                     sendToDiscord(loc.playerName, loc.world, loc.x, loc.y, loc.z, loc.biome, loc.note);
                     getServer().getScheduler().runTask(this, () -> {
-                        player.sendMessage("§a✓ Location sent to Discord!");
+                        player.sendMessage("§a✔ Location sent to Discord!");
                         pendingLocations.remove(playerId);
                     });
                 } catch (Exception e) {
@@ -380,7 +639,7 @@ public class DiscordLocationPlugin extends JavaPlugin {
 
         player.spigot().sendMessage(new TextComponent("  §7World: §f" + world));
         player.spigot().sendMessage(new TextComponent("  §7Coords: §f" + x + ", " + y + ", " + z));
-        player.spigot().sendMessage(new TextComponent("  §7Biome: §f" + formatBiomeName(biome)));
+        player.spigot().sendMessage(new TextComponent("  §7Biome: " + getBiomeColor(biome) + formatBiomeName(biome)));
 
         // If there's a note, display it
         if (note != null && !note.isEmpty()) {
@@ -390,7 +649,7 @@ public class DiscordLocationPlugin extends JavaPlugin {
         player.sendMessage(""); // Empty line for spacing
 
         // Create clickable button
-        TextComponent button = new TextComponent("§b§l[✓ Send to Discord]");
+        TextComponent button = new TextComponent("§b§l[✔ Send to Discord]");
         button.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/confirmsend"));
         button.setHoverEvent(new HoverEvent(
                 HoverEvent.Action.SHOW_TEXT,
@@ -506,6 +765,49 @@ public class DiscordLocationPlugin extends JavaPlugin {
             }
         }
         return formattedBiome.toString().trim();
+    }
+
+    private String formatWorldName(String worldName) {
+        // Capitalize the first letter of each word in the world name
+        String[] words = worldName.toLowerCase().replace("_", " ").split(" ");
+        StringBuilder formattedWorld = new StringBuilder();
+        for (String word : words) {
+            if (!word.isEmpty()) {
+                formattedWorld.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1)).append(" ");
+            }
+        }
+        return formattedWorld.toString().trim();
+    }
+
+    private String getBiomeColor(String biome) {
+        String lowerCaseBiome = biome.toLowerCase();
+        if (lowerCaseBiome.contains("forest")) {
+            return "§2"; // Dark Green
+        } else if (lowerCaseBiome.contains("desert")) {
+            return "§6"; // Gold
+        } else if (lowerCaseBiome.contains("plains")) {
+            return "§a"; // Green
+        } else if (lowerCaseBiome.contains("swamp")) {
+            return "§3"; // Dark Aqua
+        } else if (lowerCaseBiome.contains("jungle")) {
+            return "§2"; // Dark Green
+        } else if (lowerCaseBiome.contains("taiga")) {
+            return "§2"; // Dark Green
+        } else if (lowerCaseBiome.contains("ocean")) {
+            return "§9"; // Blue
+        } else if (lowerCaseBiome.contains("river")) {
+            return "§9"; // Blue
+        } else if (lowerCaseBiome.contains("beach")) {
+            return "§e"; // Yellow
+        } else if (lowerCaseBiome.contains("mushroom")) {
+            return "§c"; // Red
+        } else if (lowerCaseBiome.contains("nether")) {
+            return "§4"; // Dark Red
+        } else if (lowerCaseBiome.contains("end")) {
+            return "§5"; // Dark Purple
+        } else {
+            return "§f"; // White
+        }
     }
 
     public static DiscordLocationPlugin getInstance(){

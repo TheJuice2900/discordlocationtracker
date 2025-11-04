@@ -1,8 +1,8 @@
-name: Tracker_v2
-version: 2
+name: Tracker
+version: 3
 main: com.example.discordlocation.DiscordLocationPlugin
 api-version: 1.21
-author: Juice, Rahul
+author: Juice, Rahul, Ankit
 description: Saves player information and saves you the trouble of copy pasting! Has Discord functionality built in.
 
 commands:
@@ -27,12 +27,33 @@ commands:
     permission: discordlocation.delete
     permission-message: §cYou don't have permission to use this command!
 
+  renamelocation:
+    description: Rename a saved location
+    usage: /renamelocation <id/name> <newname>
+    aliases: [renloc, renameloc]
+    permission: discordlocation.rename
+    permission-message: §cYou don't have permission to use this command!
+
   trackerreload:
     description: Reload the plugin configuration
     usage: /discordlocationreload
     aliases: [dlreload, locreload]
-    permission: discordlocation.reload
     permission-message: §cYou don't have permission to use this command!
+
+  sharelocation:
+    description: Share a saved location with another player
+    usage: /sharelocation <id/name> <player>
+    aliases: [shareloc]
+    permission: discordlocation.share
+    permission-message: §cYou don't have permission to use this command!
+
+  acceptshare:
+    description: Accept a shared location
+    usage: /acceptshare <sender>
+
+  declineshare:
+    description: Decline a shared location
+    usage: /declineshare <sender>
 
   confirmsend:
     description: Confirm sending location to Discord
@@ -50,6 +71,8 @@ permissions:
       discordlocation.list: true
       discordlocation.delete: true
       discordlocation.reload: true
+      discordlocation.rename: true
+      discordlocation.share: true
 
   discordlocation.send:
     description: Allows players to send their location to Discord
@@ -65,4 +88,12 @@ permissions:
 
   discordlocation.reload:
     description: Allows reloading the plugin configuration
+    default: op
+
+  discordlocation.rename:
+    description: Allows players to rename their saved locations
+    default: op
+
+  discordlocation.share:
+    description: Allows players to share their saved locations
     default: op
